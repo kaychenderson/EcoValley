@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - 2D Game</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0; padding: 0; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .login-container {
+            background: white; padding: 40px; border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 300px;
+        }
+        input, button {
+            width: 100%; padding: 10px; margin: 10px 0;
+            border: 1px solid #ddd; border-radius: 5px;
+        }
+        button { 
+            background: #667eea; color: white; border: none; 
+            cursor: pointer; font-weight: bold;
+        }
+        button:hover { background: #764ba2; }
+        .links { text-align: center; margin-top: 20px; }
+        a { color: #667eea; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2>Login</h2>
+        <input type="text" id="nickname" placeholder="Nickname">
+        <input type="password" id="password" placeholder="Senha">
+        <button onclick="login()">Entrar</button>
+        <div class="links">
+            <a href="/register">Não tem conta? Cadastre-se</a>
+        </div>
+    </div>
+
+    <script>
+        async function login() {
+            const nickname = document.getElementById('nickname').value;
+            const password = document.getElementById('password').value;
+            
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nickname, password})
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                window.location.href = '/skin-selection';
+            } else {
+                alert(result.message);
+            }
+        }
+    </script>
+</body>
+</html>
