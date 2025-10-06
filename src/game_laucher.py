@@ -28,7 +28,7 @@ FPS = 60
 # CLASSE TILE
 # ========================
 class Tile:
-    def _init_(self, image, collision=False):
+    def __init__(self, image, collision=False):
         self.image = image
         self.collision = collision
 
@@ -36,7 +36,7 @@ class Tile:
 # CLASSE OBJETO (ÁRVORES, ETC)
 # ========================
 class GameObject:
-    def _init_(self, image_path, world_x, world_y, width_tiles=1, height_tiles=1, collision=False):
+    def __init__(self, image_path, world_x, world_y, width_tiles=1, height_tiles=1, collision=False):
         try:
             self.original_image = pygame.image.load(image_path).convert_alpha()
             # Redimensiona baseado no número de tiles que ocupa
@@ -73,7 +73,7 @@ class GameObject:
 # TILE MANAGER
 # ========================
 class TileManager:
-    def _init_(self, tile_size, level):
+    def __init__(self, tile_size, level):
         self.tile_size = tile_size
         self.tiles = []
         self.map_tile_num = []
@@ -235,7 +235,7 @@ class TileManager:
 # ENTITY BASE
 # ========================
 class Entity:
-    def _init_(self):
+    def __init__(self):
         self.world_x = 0
         self.world_y = 0
         self.speed = 4
@@ -247,8 +247,8 @@ class Entity:
 # PLAYER
 # ========================
 class Player(Entity):
-    def _init_(self, game, skin_index=0):
-        super()._init_()
+    def __init__(self, game, skin_index=0):
+        super().__init__()
         self.game = game
         # POSIÇÃO INICIAL MAIS SEGURA (longe de objetos)
         self.world_x = TILE_SIZE * 20
@@ -421,7 +421,7 @@ class Player(Entity):
 # ITEM PARA COLETAR
 # ========================
 class Collectible:
-    def _init_(self, x, y):
+    def __init__(self, x, y):
         self.world_x = x * TILE_SIZE
         self.world_y = y * TILE_SIZE
         self.collected = False
@@ -447,7 +447,7 @@ class Collectible:
 # GAME
 # ========================
 class Game:
-    def _init_(self, nickname, skin_index, level):
+    def __init__(self, nickname, skin_index, level):
         self.nickname = nickname
         self.skin_index = skin_index
         self.level = level
@@ -653,5 +653,5 @@ def main():
     
     sys.exit(0 if success else 1)
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
