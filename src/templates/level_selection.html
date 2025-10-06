@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Seleção de Nível - 2D Game</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0; padding: 0; min-height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .level-container {
+            background: white; padding: 40px; border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center;
+            max-width: 600px;
+        }
+        .levels-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 20px; margin: 30px 0;
+        }
+        .level-option {
+            padding: 30px; border: 3px solid #ddd; border-radius: 10px;
+            cursor: pointer; background: #f8f9fa; transition: all 0.3s;
+            min-height: 100px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        .level-option.unlocked { 
+            border-color: #667eea; 
+            background: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .level-option.unlocked:hover { 
+            transform: scale(1.05); 
+            background: #f0f8ff;
+        }
+        .level-option.locked { 
+            background: #e9ecef; 
+            color: #6c757d; 
+            cursor: not-allowed; 
+        }
+        .lock-icon { 
+            font-size: 24px; 
+            margin-bottom: 10px; 
+        }
+        h2 { margin-bottom: 30px; color: #333; }
+        h3 { margin: 10px 0; color: inherit; }
+        p { margin: 5px 0; color: #666; }
+        .level-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+        #gameStatus {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .loading {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+        }
+        .success {
+            background: #d1edff;
+            border-left: 4px solid #007bff;
+            color: #004085;
+        }
+        .error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="level-container">
+        <h2>Selecione o Nível</h2>
+        <div class="levels-grid" id="levelsGrid">
+            <!-- Níveis serão carregados via JavaScript -->
+        </div>
+        
+        <div id="gameStatus"></div>
+        
+        <div class="level-info">
+            <p><strong>Como progredir:</strong> Complete cada nível com pelo menos 70% da pontuação máxima para desbloquear o próximo!</p>
+            <p><strong>Pontuação máxima por nível:</strong> 200 pontos</p>
+            <p><strong>Pontuação necessária:</strong> 140 pontos (70%)</p>
+            <p><strong>Tempo limite:</strong> 10 minutos por nível</p>
+        </div>
+    </div>
+
+    <script>
+        async function loadLevels() {
+            try {
+                const response = await fetch('/api/get-user-data');
+                const userData = await response.json();
+                
+                if (userData.error) {
+                    alert('Erro: Usuário não logado');
+                    window.location.href = '/';
+                    return;
+                }
+                
+                const levelsGrid = document.getElementById('levelsGrid');
+                const maxLevels = 3;
+                
+                for (let i = 1; i <= maxLevels; i++) {
+                    const levelDiv = document.createElement('div');
+                    const isUnlocked = i <= userData.level_unlocked;
+                    
+                    levelDiv.className = `level-option ${isUnlocked ? 'unlocked' : 'locked'}`;
+                    
+                    if (isUnlocked) {
+                        levelDiv.innerHTML = `
+                            <h3>Mundo ${i}</h3>
+                            <p>${i === 1 ? 'Tutorial' : i === 2 ? 'Intermediário' : 'Avançado'}</p>
+                            <p>🔓 Desbloqueado</p>
+                        `;
+                        levelDiv.onclick = () => startGame(i);
+                    } else {
+                        levelDiv.innerHTML = `
+                            <div class="lock-icon">🔒</div>
+                            <h3>Mundo ${i}</h3>
+                            <p>Complete o mundo ${i-1}</p>
+                        `;
+                    }
+                    
+                    levelsGrid.appendChild(levelDiv);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar níveis:', error);
+                alert('Erro ao carregar níveis. Tente recarregar a página.');
+            }
+        }
+        
+        async function startGame(level) {
+            const statusDiv = document.getElementById('gameStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'loading';
+            statusDiv.innerHTML = '<p>🔄 Iniciando jogo... Aguarde!</p>';
+            
+            try {
+                // Chamar API para iniciar o jogo
+                const response = await fetch('/api/start-game', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ level: level })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusDiv.className = 'success';
+                    statusDiv.innerHTML = `
+                        <p>✅ Jogo iniciado com sucesso!</p>
+                        <p><strong>Instruções:</strong></p>
+                        <ul style="text-align: left; margin: 10px 0;">
+                            <li>Use W, A, S, D para mover</li>
+                            <li>Colete os itens dourados</li>
+                            <li>Evite os obstáculos vermelhos</li>
+                            <li>Tempo limite: 10 minutos</li>
+                            <li>Pontuação necessária: 140/200</li>
+                        </ul>
+                        <p>O jogo será fechado automaticamente ao terminar.</p>
+                    `;
+                    
+                    // Desabilitar botões enquanto o jogo está rodando
+                    document.querySelectorAll('.level-option.unlocked').forEach(btn => {
+                        btn.style.opacity = '0.6';
+                        btn.style.cursor = 'not-allowed';
+                        btn.onclick = null;
+                    });
+                    
+                } else {
+                    statusDiv.className = 'error';
+                    statusDiv.innerHTML = `<p>❌ Erro: ${result.message}</p>`;
+                }
+            } catch (error) {
+                statusDiv.className = 'error';
+                statusDiv.innerHTML = '<p>❌ Erro de conexão. Verifique se o jogo está instalado corretamente.</p>';
+            }
+        }
+        
+        // Verificar status do jogo periodicamente
+        async function checkGameStatus() {
+            try {
+                const response = await fetch('/api/game-status');
+                const status = await response.json();
+                
+                if (status.running) {
+                    document.querySelectorAll('.level-option.unlocked').forEach(btn => {
+                        btn.style.opacity = '0.6';
+                        btn.style.cursor = 'not-allowed';
+                        btn.onclick = null;
+                    });
+                } else {
+                    document.querySelectorAll('.level-option.unlocked').forEach(btn => {
+                        btn.style.opacity = '1';
+                        btn.style.cursor = 'pointer';
+                        // Recarregar a página para atualizar o progresso
+                        window.location.reload();
+                    });
+                }
+            } catch (error) {
+                // Ignorar erros de verificação
+            }
+        }
+        
+        // Carregar níveis quando a página carregar
+        document.addEventListener('DOMContentLoaded', function() {
+            loadLevels();
+            // Verificar status a cada 5 segundos
+            setInterval(checkGameStatus, 5000);
+        });
+    </script>
+</body>
+</html>
