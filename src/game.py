@@ -260,7 +260,7 @@ class Game:
                 self.collectibles.remove(collectible)
                 self.score += 40  # 40 pontos por coletável (Posso mudar depois)
                 
-                if self.score >= self.max_score * 0.7:  # 70% do máximo (Posso mudar depois)
+                if self.score >= self.max_score * 0.8:  # 80% do máximo (Posso mudar depois)
                     self.level_completed = True
     
     def update(self, keys):
