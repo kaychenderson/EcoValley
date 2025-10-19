@@ -258,9 +258,9 @@ class Game:
         for collectible in self.collectibles[:]:
             if player_rect.colliderect(collectible):
                 self.collectibles.remove(collectible)
-                self.score += 40  # 40 pontos por coletável (Posso mudar depois)
+                self.score += 40  # 40 pontos por coletável
                 
-                if self.score >= self.max_score * 0.8:  # 80% do máximo (Posso mudar depois)
+                if self.score >= self.max_score * 0.8:  # 80% do máximo
                     self.level_completed = True
     
     def update(self, keys):
@@ -295,7 +295,7 @@ class Game:
         for collectible in self.collectibles:
             screen_x = collectible.x - self.camera_x
             screen_y = collectible.y - self.camera_y
-            pygame.draw.circle(surface, (255, 215, 0),  # Cor +/- dourada
+            pygame.draw.circle(surface, (255, 215, 0),  # Cor dourada
                              (screen_x + 10, screen_y + 10), 10)
         
         # Desenhar jogador
@@ -374,7 +374,7 @@ def start_game(nickname, skin_index, level):
                     return start_game(nickname, skin_index, level)
                 elif game.level_completed and event.key == pygame.K_c:
                     # Atualizar progresso no servidor
-                    if game.level_completed and game.score >= 140:  # 70% de 200 (posso mudar depois)
+                    if game.level_completed and game.score >= 140:  # 70% de 200
                         new_level = level + 1
                         try:
                             requests.post('http://localhost:5000/api/update-level-progress', 
