@@ -22,6 +22,21 @@ Neste jogo, você será o herói da sustentabilidade, com a missão de limpar e 
 ## Requisitos
 [Link para lista de Requisitos](https://docs.google.com/document/d/1LK-SypXjKwVWSec_DbDpLpdg-Q2OH0i8YQUHqr1TGtk/edit?tab=t.0)
 
+## Instalação das bibliotecas
+
+### Pygame e Flask
+
+```bash
+pip install pygame
+pip install flask
+```
+
+## Como rodar na minha máquina
+
+```bash
+python server.py
+```
+
 ## Como Jogar
 
 1. Explore o cenário para encontrar os lixos espalhados.
