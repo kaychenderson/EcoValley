@@ -39,15 +39,165 @@ TRASH_COLORS = {
 # CLASSE TILE
 # ========================
 class Tile:
-    def _init_(self, image, collision=False):
+    def __init__(self, image, collision=False):
         self.image = image
         self.collision = collision
+
+# ========================
+# CLASSE OBJETO (ÁRVORES, ETC)
+# ========================
+class GameObject:
+    def __init__(self, image_path, world_x, world_y, width_tiles=1, height_tiles=1, collision=False):
+        try:
+            self.original_image = pygame.image.load(image_path).convert_alpha()
+            # Redimensiona baseado no número de tiles que ocupa
+            self.image = pygame.transform.scale(
+                self.original_image,
+                (width_tiles * TILE_SIZE, height_tiles * TILE_SIZE)
+            )
+            self.world_x = world_x
+            self.world_y = world_y
+            self.width_tiles = width_tiles
+            self.height_tiles = height_tiles
+            self.collision = collision
+        except pygame.error as e:
+            print(f"Erro ao carregar imagem {image_path}: {e}")
+            # Criar uma imagem placeholder se o arquivo não existir
+            self.image = pygame.Surface((width_tiles * TILE_SIZE, height_tiles * TILE_SIZE), pygame.SRCALPHA)
+            # Placeholder simples (copa + tronco central)
+            self.image.fill((0, 0, 0, 0))
+            # Desenhar copa ocupando as (height_tiles - 1) linhas superiores e todas as colunas
+            if height_tiles > 1:
+                crown = pygame.Surface((width_tiles * TILE_SIZE, (height_tiles - 1) * TILE_SIZE))
+                crown.fill((34, 139, 34))
+                self.image.blit(crown, (0, 0))
+            # Desenhar tronco apenas no tile central da base (1 tile de largura)
+            trunk = pygame.Surface((TILE_SIZE, TILE_SIZE))
+            trunk.fill((101, 67, 33))
+            center_col = width_tiles // 2
+            trunk_x = center_col * TILE_SIZE
+            trunk_y = (height_tiles - 1) * TILE_SIZE
+            self.image.blit(trunk, (trunk_x, trunk_y))
+
+            self.world_x = world_x
+            self.world_y = world_y
+            self.width_tiles = width_tiles
+            self.height_tiles = height_tiles
+            self.collision = collision
+
+        # Criar rect de colisão **apenas no tronco central da base**
+        # Tronco fica na coluna central (largura = 1 tile) e na última linha (altura = 1 tile)
+        if self.collision:
+            center_col = self.width_tiles // 2
+            trunk_x_world = int(self.world_x + center_col * TILE_SIZE)
+            trunk_y_world = int(self.world_y + (self.height_tiles - 1) * TILE_SIZE)
+            self.collision_rect = pygame.Rect(
+                trunk_x_world,
+                trunk_y_world,
+                TILE_SIZE,           # largura: apenas 1 tile (tronco central)
+                TILE_SIZE            # altura: 1 tile (linha da base)
+            )
+        else:
+            self.collision_rect = None
+
+    def update_collision_rect(self):
+        """Atualiza collision_rect caso world_x/world_y mudem (se necessário)."""
+        if self.collision and self.collision_rect:
+            center_col = self.width_tiles // 2
+            self.collision_rect.x = int(self.world_x + center_col * TILE_SIZE)
+            self.collision_rect.y = int(self.world_y + (self.height_tiles - 1) * TILE_SIZE)
+            self.collision_rect.width = TILE_SIZE
+            self.collision_rect.height = TILE_SIZE
+
+    @property
+    def bottom_y(self):
+        """Retorna y da base (usado para depth-sorting)."""
+        return self.world_y + self.height_tiles * TILE_SIZE
+
+    def draw(self, screen, camera_x, camera_y, debug=False):
+        screen_x = self.world_x - camera_x
+        screen_y = self.world_y - camera_y
+
+        # Só desenha se estiver dentro da área visível
+        if (-self.width_tiles * TILE_SIZE <= screen_x < SCREEN_WIDTH and
+            -self.height_tiles * TILE_SIZE <= screen_y < SCREEN_HEIGHT):
+            screen.blit(self.image, (screen_x, screen_y))
+
+            # Debug: desenha rect de colisão (apenas o tronco central)
+            if debug and self.collision_rect:
+                pygame.draw.rect(screen, (255, 0, 0), (
+                    self.collision_rect.x - camera_x,
+                    self.collision_rect.y - camera_y,
+                    self.collision_rect.width,
+                    self.collision_rect.height
+                ), 1)
+
+# ========================
+# CLASSE LIXO
+# ========================
+class Trash:
+    def __init__(self, x, y, trash_type, image_path):
+        self.world_x = x * TILE_SIZE
+        self.world_y = y * TILE_SIZE
+        self.trash_type = trash_type
+        self.collected = False
+        self.size = TILE_SIZE  # Agora ocupa 1 tile completo
+        self.color = TRASH_COLORS.get(trash_type, (128, 128, 128))
+        
+        # Carregar imagem do lixo
+        self.image = None
+        try:
+            if os.path.exists(image_path):
+                self.image = pygame.image.load(image_path).convert_alpha()
+                self.image = pygame.transform.scale(self.image, (self.size, self.size))
+            else:
+                print(f"Imagem de lixo não encontrada: {image_path}")
+        except Exception as e:
+            print(f"Erro ao carregar imagem do lixo {image_path}: {e}")
+
+    def draw(self, screen, camera_x, camera_y):
+        if not self.collected:
+            screen_x = self.world_x - camera_x
+            screen_y = self.world_y - camera_y
+            
+            if self.image:
+                screen.blit(self.image, (screen_x, screen_y))
+            else:
+                # Desenhar placeholder colorido ocupando o tile completo
+                pygame.draw.rect(screen, self.color, (screen_x, screen_y, self.size, self.size))
+                
+                # Mostrar tipo do lixo
+                font = pygame.font.Font(None, 20)
+                text = font.render(self.trash_type.upper(), True, (0, 0, 0))
+                text_rect = text.get_rect(center=(screen_x + self.size//2, screen_y + self.size//2))
+                screen.blit(text, text_rect)
+
+    def check_collision(self, player_x, player_y):
+        if self.collected:
+            return False
+
+        player_rect = pygame.Rect(player_x, player_y, TILE_SIZE, TILE_SIZE)
+        trash_rect = pygame.Rect(self.world_x, self.world_y, self.size, self.size)
+        return player_rect.colliderect(trash_rect)
+
+    @property
+    def bottom_y(self):
+        """Y da base do lixo (usado para depth-sorting)"""
+        return self.world_y + self.size
+
+# ========================
+# CLASSE LIXEIRA
+# ========================
+class TrashBin(GameObject):
+    def __init__(self, image_path, world_x, world_y, trash_type, width_tiles=1, height_tiles=1):
+        super().__init__(image_path, world_x, world_y, width_tiles, height_tiles, collision=True)
+        self.trash_type = trash_type
 
 # ========================
 # TILE MANAGER
 # ========================
 class TileManager:
-    def _init_(self, tile_size, level):
+    def __init__(self, tile_size, level):
         self.tile_size = tile_size
         self.tiles = []
         self.map_tile_num = []
@@ -613,7 +763,7 @@ class TileManager:
 # ENTITY BASE
 # ========================
 class Entity:
-    def _init_(self):
+    def __init__(self):
         self.world_x = 0
         self.world_y = 0
         self.speed = 4
@@ -625,8 +775,8 @@ class Entity:
 # PLAYER
 # ========================
 class Player(Entity):
-    def _init_(self, game, skin_index=0):
-        super()._init_()
+    def __init__(self, game, skin_index=0):
+        super().__init__()
         self.game = game
         # POSIÇÃO INICIAL MAIS SEGURA (longe de objetos)
         self.world_x = TILE_SIZE * 20
@@ -851,3 +1001,425 @@ class Player(Entity):
         screen_y = SCREEN_HEIGHT // 2 - TILE_SIZE // 2
 
         surface.blit(image, (screen_x, screen_y))
+
+# ========================
+# GAME
+# ========================
+class Game:
+    def __init__(self, nickname, skin_index, level):
+        self.nickname = nickname
+        self.skin_index = skin_index
+        self.level = level
+
+        pygame.init()
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption(f"2D Game - {nickname} - Nível {level}")
+        self.clock = pygame.time.Clock()
+
+        self.tile_size = TILE_SIZE
+        self.player = Player(self, skin_index)
+        self.tile_manager = TileManager(TILE_SIZE, level)
+
+        # Variáveis da câmera
+        self.camera_x = 0
+        self.camera_y = 0
+
+        # Sistema de jogo
+        self.trashes = self.generate_trashes()
+        self.score = 0
+        self.max_score = 200
+        self.start_time = pygame.time.get_ticks()
+        self.game_duration = 600000  # 10 minutos em milissegundos
+        self.game_over = False
+        self.level_completed = False
+        self.trash_collected = 0
+        self.total_trashes = 20
+
+        # Fontes
+        self.font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 24)
+
+        # Debug flag: desenhar rects de colisão
+        self.debug_draw_collision = False
+
+        print(f"Player iniciado em: ({self.player.world_x}, {self.player.world_y})")
+
+    def load_trash_images(self):
+        """Carrega todas as imagens de lixo das pastas organizadas"""
+        trash_images = {trash_type: [] for trash_type in TRASH_TYPES}
+        
+        for trash_type in TRASH_TYPES:
+            trash_folder = f"res/trashes/{trash_type}"
+            if os.path.exists(trash_folder):
+                try:
+                    # Listar todos os arquivos PNG da pasta
+                    for file in os.listdir(trash_folder):
+                        if file.lower().endswith('.png'):
+                            image_path = os.path.join(trash_folder, file)
+                            trash_images[trash_type].append(image_path)
+                    print(f"Carregadas {len(trash_images[trash_type])} imagens para {trash_type}")
+                except Exception as e:
+                    print(f"Erro ao carregar imagens de {trash_type}: {e}")
+            else:
+                print(f"Pasta não encontrada: {trash_folder}")
+        
+        return trash_images
+
+    def is_valid_position(self, x, y, used_positions, buffer=2):
+        """Verifica se a posição é válida (evita cantos, objetos e áreas inacessíveis)"""
+        # Evitar cantos do mapa
+        if x < 3 or x >= MAX_WORLD_COL - 3 or y < 3 or y >= MAX_WORLD_ROW - 3:
+            return False
+        
+        # Evitar posições muito próximas (buffer reduzido pois os lixos são maiores)
+        for used_x, used_y in used_positions:
+            if abs(x - used_x) < buffer and abs(y - used_y) < buffer:
+                return False
+        
+        # Verificar colisão com objetos (árvores, etc) - agora considerando tamanho completo
+        world_x = x * TILE_SIZE
+        world_y = y * TILE_SIZE
+        trash_rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+        
+        # Verificar colisão com objetos
+        for obj in self.tile_manager.objects:
+            if obj.collision and obj.collision_rect:
+                if trash_rect.colliderect(obj.collision_rect):
+                    return False
+        
+        # Verificar colisão com tiles de água/obstáculos
+        tile_x = x
+        tile_y = y
+        
+        if 0 <= tile_y < len(self.tile_manager.map_tile_num) and 0 <= tile_x < len(self.tile_manager.map_tile_num[0]):
+            tile_index = self.tile_manager.map_tile_num[tile_y][tile_x]
+            if tile_index >= 2 and tile_index <= 28:  # Tiles
+                if self.tile_manager.tiles[tile_index].collision:
+                    return False
+        
+        return True
+
+    def generate_trashes(self):
+        """Gera 20 lixos (4 de cada tipo) em posições válidas no mapa"""
+        trash_images = self.load_trash_images()
+        trashes = []
+        used_positions = set()
+        
+        # Para cada tipo de lixo, gerar 4 instâncias
+        for trash_type in TRASH_TYPES:
+            images_for_type = trash_images[trash_type]
+            if not images_for_type:
+                print(f"⚠️ Nenhuma imagem encontrada para {trash_type}, usando placeholder")
+                # Criar algumas imagens placeholder se não houver imagens
+                images_for_type = [None] * 4
+            
+            for i in range(4):  # 4 lixos de cada tipo
+                attempts = 0
+                max_attempts = 100  # Evitar loop infinito
+                
+                while attempts < max_attempts:
+                    x = random.randint(5, MAX_WORLD_COL - 5)
+                    y = random.randint(5, MAX_WORLD_ROW - 5)
+                    
+                    if (x, y) not in used_positions and self.is_valid_position(x, y, used_positions):
+                        # Escolher uma imagem aleatória para este tipo
+                        if images_for_type:
+                            image_path = random.choice(images_for_type)
+                        else:
+                            image_path = None
+                        
+                        trash = Trash(x, y, trash_type, image_path)
+                        trashes.append(trash)
+                        used_positions.add((x, y))
+                        print(f"✅ Lixo {trash_type} posicionado em ({x}, {y})")
+                        break
+                    
+                    attempts += 1
+                
+                if attempts >= max_attempts:
+                    print(f"⚠️ Não foi possível encontrar posição válida para {trash_type} {i+1}")
+        
+        print(f"🎯 Total de lixos gerados: {len(trashes)}")
+        return trashes
+
+    def update_camera(self):
+        """Atualiza a posição da câmera para seguir o player"""
+        target_x = self.player.world_x - SCREEN_WIDTH // 2 + TILE_SIZE // 2
+        target_y = self.player.world_y - SCREEN_HEIGHT // 2 + TILE_SIZE // 2
+
+        self.camera_x = max(0, min(target_x, WORLD_WIDTH - SCREEN_WIDTH))
+        self.camera_y = max(0, min(target_y, WORLD_HEIGHT - SCREEN_HEIGHT))
+
+    def check_trash_collision(self):
+        """Verifica colisão com lixos"""
+        for trash in self.trashes:
+            if trash.check_collision(self.player.world_x, self.player.world_y):
+                if not trash.collected and self.player.get_inventory_count() < self.player.max_items:
+                    if self.player.add_to_inventory(trash):
+                        trash.collected = True
+                        self.trash_collected += 1
+                        print(f"Lixo coletado! Tipo: {trash.trash_type}. Total: {self.trash_collected}")
+
+    def check_trash_bin_interaction(self):
+        """Verifica interação com lixeiras"""
+        player_rect = pygame.Rect(self.player.world_x, self.player.world_y, TILE_SIZE, TILE_SIZE)
+        
+        for trash_bin in self.tile_manager.trash_bins:
+            if player_rect.colliderect(trash_bin.collision_rect):
+                # Verificar se há lixo selecionado no inventário
+                selected_trash = self.player.inventory[self.player.selected_slot]
+                if selected_trash:
+                    if selected_trash.trash_type == trash_bin.trash_type:
+                        # Lixo correto - adicionar pontos
+                        self.score += 10
+                        self.player.remove_from_inventory(self.player.selected_slot)
+                        print(f"Lixo descartado corretamente! +10 pontos. Total: {self.score}")
+                        
+                        # Verificar se nível foi completado
+                        if self.score >= self.max_score * 0.8:  # 80% do máximo
+                            self.level_completed = True
+                    else:
+                        # Lixo errado - remove do inventário SEM penalidade
+                        self.player.remove_from_inventory(self.player.selected_slot)
+                        print(f"Lixo descartado incorretamente! Lixeira: {trash_bin.trash_type}, Lixo: {selected_trash.trash_type}. Lixo removido do inventário.")
+                        # A pontuação permanece a mesma, sem subtração
+
+    def draw_inventory(self):
+        """Desenha o inventário na tela"""
+        inventory_width = 350 
+        inventory_height = 80  
+        inventory_x = (SCREEN_WIDTH - inventory_width) // 2
+        inventory_y = SCREEN_HEIGHT - inventory_height - 10
+        
+        # Fundo do inventário
+        inventory_bg = pygame.Surface((inventory_width, inventory_height))
+        inventory_bg.set_alpha(200)
+        inventory_bg.fill((50, 50, 50))
+        self.screen.blit(inventory_bg, (inventory_x, inventory_y))
+        
+        slot_width = 60  
+        slot_height = 60
+        slot_spacing = 10
+        start_x = inventory_x + (inventory_width - (5 * slot_width + 4 * slot_spacing)) // 2
+        
+        for i in range(5):
+            slot_x = start_x + i * (slot_width + slot_spacing)
+            slot_y = inventory_y + 10
+            
+            # Desenhar slot
+            slot_color = (200, 200, 100) if i == self.player.selected_slot else (100, 100, 100)
+            pygame.draw.rect(self.screen, slot_color, (slot_x, slot_y, slot_width, slot_height))
+            pygame.draw.rect(self.screen, (255, 255, 255), (slot_x, slot_y, slot_width, slot_height), 2)
+            
+            # Desenhar número do slot
+            number_text = self.small_font.render(str(i + 1), True, (255, 255, 255))
+            self.screen.blit(number_text, (slot_x + 5, slot_y + 5))
+            
+            # Desenhar lixo no slot, se houver
+            trash = self.player.inventory[i]
+            if trash:
+                if trash.image:
+                    # Redimensionar imagem para caber no slot maior
+                    trash_img = pygame.transform.scale(trash.image, (slot_width - 10, slot_height - 10))
+                    self.screen.blit(trash_img, (slot_x + 5, slot_y + 5))
+                else:
+                    pygame.draw.rect(self.screen, trash.color, 
+                                (slot_x + 5, slot_y + 5, slot_width - 10, slot_height - 10))
+                
+                # Mostrar tipo do lixo
+                type_text = self.small_font.render(trash.trash_type[:3], True, (255, 255, 255))
+                self.screen.blit(type_text, (slot_x + slot_width // 2 - 10, slot_y + slot_height - 15))
+
+    def draw_hud(self):
+        """HUD moderna, equilibrada e sem fundo opaco"""
+        # --- Cores ---
+        text_color = (255, 255, 255)
+        shadow_color = (0, 0, 0)
+        bar_bg_color = (60, 60, 60)
+        bar_fill_color = (0, 200, 100)
+
+        # --- Cálculos principais ---
+        time_left = max(0, self.game_duration - (pygame.time.get_ticks() - self.start_time))
+        minutes = time_left // 60000
+        seconds = (time_left % 60000) // 1000
+        time_text = f"Tempo: {minutes:02d}:{seconds:02d}"
+        score_text = f"Pontos: {self.score}/{self.max_score}"
+        items_text = f"Lixos: {self.trash_collected}/{self.total_trashes}"
+        level_text = f"Nível {self.level}"
+        player_text = f"{self.nickname}"
+
+        # --- Barra centralizada ---
+        collected_ratio = self.score / self.max_score
+        bar_width = 260
+        bar_height = 16
+        bar_x = (SCREEN_WIDTH - bar_width) // 2
+        bar_y = 40
+
+        pygame.draw.rect(self.screen, bar_bg_color, (bar_x, bar_y, bar_width, bar_height), border_radius=8)
+        pygame.draw.rect(self.screen, bar_fill_color, (bar_x, bar_y, int(bar_width * collected_ratio), bar_height), border_radius=8)
+
+        # --- Nome e nível acima da barra ---
+        title_text = f"{player_text}  |  {level_text}"
+        title_surface = self.small_font.render(title_text, True, text_color)
+        title_shadow = self.small_font.render(title_text, True, shadow_color)
+        self.screen.blit(title_shadow, (SCREEN_WIDTH // 2 - title_surface.get_width() // 2 + 1, bar_y - 18 + 1))
+        self.screen.blit(title_surface, (SCREEN_WIDTH // 2 - title_surface.get_width() // 2, bar_y - 18))
+
+        # --- Textos no canto superior esquerdo ---
+        def draw_text_with_shadow(text, pos_y, font):
+            shadow = font.render(text, True, shadow_color)
+            text_render = font.render(text, True, text_color)
+            self.screen.blit(shadow, (21, pos_y + 1))
+            self.screen.blit(text_render, (20, pos_y))
+
+        draw_text_with_shadow(time_text, 80, self.font)
+        draw_text_with_shadow(score_text, 110, self.font)
+        draw_text_with_shadow(items_text, 145, self.small_font)
+
+    def draw_game_over(self):
+        """Desenha tela de game over"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+
+        game_over_text = self.font.render("TEMPO ESGOTADO!", True, (255, 0, 0))
+        restart_text = self.small_font.render("Pressione ESC para sair", True, (255, 255, 255))
+
+        self.screen.blit(game_over_text, (SCREEN_WIDTH//2 - game_over_text.get_width()//2, SCREEN_HEIGHT//2 - 50))
+        self.screen.blit(restart_text, (SCREEN_WIDTH//2 - restart_text.get_width()//2, SCREEN_HEIGHT//2 + 20))
+
+    def draw_level_complete(self):
+        """Desenha tela de nível completo"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+
+        complete_text = self.font.render("NÍVEL CONCLUÍDO!", True, (0, 255, 0))
+        score_text = self.font.render(f"Pontuação: {self.score}/{self.max_score}", True, (255, 255, 255))
+        continue_text = self.small_font.render("Pressione ESC para continuar", True, (255, 255, 255))
+
+        self.screen.blit(complete_text, (SCREEN_WIDTH//2 - complete_text.get_width()//2, SCREEN_HEIGHT//2 - 80))
+        self.screen.blit(score_text, (SCREEN_WIDTH//2 - score_text.get_width()//2, SCREEN_HEIGHT//2 - 20))
+        self.screen.blit(continue_text, (SCREEN_WIDTH//2 - continue_text.get_width()//2, SCREEN_HEIGHT//2 + 40))
+
+    def run(self):
+        running = True
+
+        while running:
+            current_time = pygame.time.get_ticks()
+            time_elapsed = current_time - self.start_time
+
+            # Verificar fim de jogo por tempo
+            if time_elapsed >= self.game_duration and not self.level_completed:
+                self.game_over = True
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    # Toggle debug para visualizar rects de colisão
+                    elif event.key == pygame.K_F1:
+                        self.debug_draw_collision = not self.debug_draw_collision
+
+            if not self.game_over and not self.level_completed:
+                keys = pygame.key.get_pressed()
+                self.player.update(keys, self.tile_manager)
+                self.update_camera()
+                self.check_trash_collision()
+                self.check_trash_bin_interaction()
+
+            # Renderização
+            self.screen.fill((0, 0, 0))
+
+            # 1. Terreno
+            self.tile_manager.draw_ground(self.screen, self.camera_x, self.camera_y)
+
+            # 2. Lixos
+            for trash in self.trashes:
+                trash.draw(self.screen, self.camera_x, self.camera_y)
+
+            # 3+4. Depth-sorting: ordenar e desenhar objetos e player com base em bottom_y
+            # Construir lista de drawables (objetos + player + lixos)
+            drawables = []
+            # adicionar objetos
+            for obj in self.tile_manager.objects:
+                # garantir collision_rect atualizado
+                obj.update_collision_rect()
+                drawables.append(obj)
+            # adicionar lixos não coletados
+            for trash in self.trashes:
+                if not trash.collected:
+                    drawables.append(trash)
+            # adicionar player
+            drawables.append(self.player)
+
+            # ordenar pela coordenada de base/bottom y
+            def get_bottom(o):
+                # se tiver atributo bottom_y usar ele, senão usar world_y + TILE_SIZE
+                if hasattr(o, "bottom_y"):
+                    return o.bottom_y
+                return getattr(o, "world_y", 0) + TILE_SIZE
+
+            drawables.sort(key=get_bottom)
+
+            # desenhar na ordem
+            for d in drawables:
+                if isinstance(d, GameObject):
+                    d.draw(self.screen, self.camera_x, self.camera_y, debug=self.debug_draw_collision)
+                elif isinstance(d, Trash):
+                    d.draw(self.screen, self.camera_x, self.camera_y)
+                elif isinstance(d, Player):
+                    d.draw(self.screen, self.camera_x, self.camera_y)
+
+            # 5. Inventário
+            self.draw_inventory()
+
+            # 6. HUD
+            self.draw_hud()
+
+            # 7. Telas de fim de jogo
+            if self.game_over:
+                self.draw_game_over()
+            elif self.level_completed:
+                self.draw_level_complete()
+
+            pygame.display.flip()
+            self.clock.tick(FPS)
+
+        pygame.quit()
+
+        # Retornar resultado
+        success = self.level_completed and self.score >= 160  # 80% de 200
+        print(f"\n=== RESULTADO ===")
+        print(f"Jogador: {self.nickname}")
+        print(f"Nível: {self.level}")
+        print(f"Pontuação: {self.score}/{self.max_score}")
+        print(f"Lixos coletados: {self.trash_collected}/{self.total_trashes}")
+        print(f"Status: {'APROVADO' if success else 'REPROVADO'}")
+
+        return success
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--nickname', required=True)
+    parser.add_argument('--skin', type=int, required=True)
+    parser.add_argument('--level', type=int, required=True)
+
+    args = parser.parse_args()
+
+    print("=== INICIANDO JOGO 2D COM SISTEMA DE COLETA SELETIVA ===")
+    print(f"Jogador: {args.nickname}")
+    print(f"Skin: {args.skin}")
+    print(f"Nível: {args.level}")
+
+    game = Game(args.nickname, args.skin, args.level)
+    success = game.run()
+
+    sys.exit(0 if success else 1)
+
+if __name__ == '__main__':
+    main()
