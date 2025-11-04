@@ -608,3 +608,246 @@ class TileManager:
         """Desenha os objetos (camada superior)"""
         for obj in self.objects:
             obj.draw(screen, camera_x, camera_y)
+
+# ========================
+# ENTITY BASE
+# ========================
+class Entity:
+    def _init_(self):
+        self.world_x = 0
+        self.world_y = 0
+        self.speed = 4
+        self.direction = "down"
+        self.sprite_counter = 0
+        self.sprite_num = 1
+
+# ========================
+# PLAYER
+# ========================
+class Player(Entity):
+    def _init_(self, game, skin_index=0):
+        super()._init_()
+        self.game = game
+        # POSIÇÃO INICIAL MAIS SEGURA (longe de objetos)
+        self.world_x = TILE_SIZE * 20
+        self.world_y = TILE_SIZE * 20
+        self.skin_index = skin_index
+        self.images = self.load_images()
+
+        # Sistema de inventário
+        self.inventory = [None] * 5  # 5 slots de inventário
+        self.selected_slot = 0
+        self.max_items = 5
+
+        self.width = TILE_SIZE
+        self.height = TILE_SIZE
+
+    def load_images(self):
+        """Carrega as imagens reais do player da pasta res/"""
+        images = {"up": [], "down": [], "left": [], "right": []}
+
+        try:
+            # skin_index 0 = personagem padrão
+            folder = "res/player/"
+
+            # Carregar imagens
+            images["up"].append(self.load_and_scale_image(folder + "PlayerUp1.png"))
+            images["up"].append(self.load_and_scale_image(folder + "PlayerUp2.png"))
+
+            images["down"].append(self.load_and_scale_image(folder + "PlayerDown1.png"))
+            images["down"].append(self.load_and_scale_image(folder + "PlayerDown2.png"))
+
+            images["left"].append(self.load_and_scale_image(folder + "PlayerLeft1.png"))
+            images["left"].append(self.load_and_scale_image(folder + "PlayerLeft2.png"))
+
+            images["right"].append(self.load_and_scale_image(folder + "PlayerRight1.png"))
+            images["right"].append(self.load_and_scale_image(folder + "PlayerRight2.png"))
+
+        except Exception as e:
+            print(f"Erro ao carregar imagens do player: {e}")
+            # Fallback para sprites coloridas
+            images = self.create_fallback_sprites()
+
+        return images
+
+    def load_and_scale_image(self, path):
+        """Carrega e redimensiona uma imagem para o tamanho do tile"""
+        if os.path.exists(path):
+            image = pygame.image.load(path).convert_alpha()
+            return pygame.transform.scale(image, (TILE_SIZE, TILE_SIZE))
+        else:
+            # Criar placeholder se a imagem não existir
+            print(f"Imagem não encontrada: {path}")
+            surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            color = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)][self.skin_index % 4]
+            pygame.draw.rect(surf, color, (0, 0, TILE_SIZE, TILE_SIZE))
+            return surf
+
+    def create_fallback_sprites(self):
+        """Cria sprites de fallback caso as imagens não carreguem (é só um plano B)"""
+        skin_colors = [
+            [(255, 0, 0), (200, 0, 0)],    # Vermelho
+            [(0, 255, 0), (0, 200, 0)],    # Verde  
+            [(0, 0, 255), (0, 0, 200)],    # Azul
+            [(255, 255, 0), (200, 200, 0)] # Amarelo
+        ]
+
+        base_color, dark_color = skin_colors[self.skin_index % len(skin_colors)]
+
+        images = {"up": [], "down": [], "left": [], "right": []}
+        size = TILE_SIZE
+
+        for direction in images.keys():
+            # Sprite 1
+            surf1 = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.rect(surf1, base_color, (0, 0, size, size))
+            pygame.draw.circle(surf1, (255, 255, 255), (size//2, size//3), size//6)
+            images[direction].append(surf1)
+
+            # Sprite 2 (animação)
+            surf2 = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.rect(surf2, dark_color, (0, 0, size, size))
+            pygame.draw.circle(surf2, (255, 255, 255), (size//2, size//3), size//6)
+            images[direction].append(surf2)
+
+        return images
+
+    def get_collision_rect(self, x=None, y=None):
+        """Retorna o retângulo de colisão com as dimensões personalizadas"""
+        if x is None:
+            x = self.world_x
+        if y is None:
+            y = self.world_y
+        
+        # Calcula a largura
+        collision_width = int(self.width)
+        # Calcula a altura (metade da altura)
+        collision_height = int(self.height / 2)
+        
+        # Centraliza o retângulo de colisão horizontalmente
+        collision_x = x + (self.width - collision_width) // 2
+        # Coloca o retângulo de colisão na parte inferior do sprite
+        collision_y = y + (self.height - collision_height)
+        
+        return pygame.Rect(int(collision_x), int(collision_y), collision_width, collision_height)
+
+    def check_collision(self, new_x, new_y, tile_manager):
+        """Verifica colisão com tiles e objetos usando a área de colisão personalizada"""
+        # Usar o retângulo de colisão personalizado
+        player_rect = self.get_collision_rect(new_x, new_y)
+
+        # Verificar colisão com tiles de colisão
+        tile_x1 = int(new_x / TILE_SIZE)
+        tile_y1 = int(new_y / TILE_SIZE)
+        tile_x2 = int((new_x + TILE_SIZE - 1) / TILE_SIZE)
+        tile_y2 = int((new_y + TILE_SIZE - 1) / TILE_SIZE)
+
+        for y in range(tile_y1, tile_y2 + 1):
+            for x in range(tile_x1, tile_x2 + 1):
+                if 0 <= y < len(tile_manager.map_tile_num) and 0 <= x < len(tile_manager.map_tile_num[0]):
+                    tile_index = tile_manager.map_tile_num[y][x]
+                    if tile_manager.tiles[tile_index].collision:
+                        # Criar rect do tile
+                        tile_rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                        if player_rect.colliderect(tile_rect):
+                            return True
+
+        # Verificar colisão com objetos usando collision_rect
+        for obj in tile_manager.objects:
+            if obj.collision and obj.collision_rect:
+                if player_rect.colliderect(obj.collision_rect):
+                    return True
+
+        return False
+
+    def add_to_inventory(self, trash):
+        """Adiciona lixo ao primeiro slot vazio do inventário"""
+        for i in range(len(self.inventory)):
+            if self.inventory[i] is None:
+                self.inventory[i] = trash
+                return True
+        return False  # Inventário cheio
+
+    def remove_from_inventory(self, slot):
+        """Remove lixo do slot especificado"""
+        if 0 <= slot < len(self.inventory) and self.inventory[slot] is not None:
+            removed_trash = self.inventory[slot]
+            self.inventory[slot] = None
+            return removed_trash
+        return None
+
+    def get_inventory_count(self):
+        """Retorna quantos slots estão ocupados"""
+        return sum(1 for item in self.inventory if item is not None)
+
+    def update(self, keys, tile_manager):
+        """Atualiza a posição do player - com colisão por eixo (corrige bug de travar)"""
+        move_x, move_y = 0, 0
+
+        # Direção
+        if keys[pygame.K_w] or keys[pygame.K_UP]:
+            move_y = -1
+            self.direction = "up"
+        elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            move_y = 1
+            self.direction = "down"
+
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            move_x = -1
+            self.direction = "left"
+        elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            move_x = 1
+            self.direction = "right"
+
+        # Seleção de slots do inventário
+        if keys[pygame.K_1]:
+            self.selected_slot = 0
+        elif keys[pygame.K_2]:
+            self.selected_slot = 1
+        elif keys[pygame.K_3]:
+            self.selected_slot = 2
+        elif keys[pygame.K_4]:
+            self.selected_slot = 3
+        elif keys[pygame.K_5]:
+            self.selected_slot = 4
+
+        # Normaliza movimento diagonal
+        if move_x != 0 and move_y != 0:
+            move_x *= 0.7071
+            move_y *= 0.7071
+
+        # --- Movimenta e checa colisão eixo X ---
+        new_x = self.world_x + move_x * self.speed
+        if not self.check_collision(new_x, self.world_y, tile_manager):
+            self.world_x = new_x
+
+        # --- Movimenta e checa colisão eixo Y ---
+        new_y = self.world_y + move_y * self.speed
+        if not self.check_collision(self.world_x, new_y, tile_manager):
+            self.world_y = new_y
+
+        # Limites do mundo
+        self.world_x = max(0, min(self.world_x, WORLD_WIDTH - TILE_SIZE))
+        self.world_y = max(0, min(self.world_y, WORLD_HEIGHT - TILE_SIZE))
+
+        # --- Animação ---
+        if move_x != 0 or move_y != 0:
+            self.sprite_counter += 1
+            if self.sprite_counter > 7:
+                self.sprite_num = 1 if self.sprite_num == 2 else 2
+                self.sprite_counter = 0
+
+    @property
+    def bottom_y(self):
+        """Y da base do player (usado para depth-sorting)"""
+        return self.world_y + TILE_SIZE
+
+    def draw(self, surface, camera_x, camera_y):
+        img_list = self.images[self.direction]
+        image = img_list[self.sprite_num - 1]
+
+        # Calcula a posição do player na tela (sempre centralizado)
+        screen_x = SCREEN_WIDTH // 2 - TILE_SIZE // 2
+        screen_y = SCREEN_HEIGHT // 2 - TILE_SIZE // 2
+
+        surface.blit(image, (screen_x, screen_y))
