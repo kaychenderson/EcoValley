@@ -78,6 +78,14 @@
 <body>
     <div class="level-container">
         <h2>Selecione o Nível</h2>
+        <div style="margin-bottom: 20px;">
+            <a href="#" onclick="showRanking()" 
+            style="padding: 10px 20px; background: #28a745; 
+                    color: white; border: none; border-radius: 5px;
+                    cursor: pointer; text-decoration: none; display: inline-block;">
+            👑 Ver Ranking
+            </a>
+        </div>
         <div class="levels-grid" id="levelsGrid">
             <!-- Níveis serão carregados via JavaScript -->
         </div>
@@ -116,7 +124,7 @@
                     if (isUnlocked) {
                         levelDiv.innerHTML = `
                             <h3>Mundo ${i}</h3>
-                            <p>${i === 1 ? 'Tutorial' : i === 2 ? 'Intermediário' : 'Avançado'}</p>
+                            <p>${i === 1 ? 'Fácil' : i === 2 ? 'Intermediário' : 'Avançado'}</p>
                             <p>🔓 Desbloqueado</p>
                         `;
                         levelDiv.onclick = () => startGame(i);
@@ -215,6 +223,59 @@
             // Verificar status a cada 5 segundos
             setInterval(checkGameStatus, 5000);
         });
+
+        function showRanking() {
+        // Criar modal para selecionar nível do ranking
+        const modalHTML = `
+            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                        background: rgba(0,0,0,0.5); display: flex; 
+                        justify-content: center; align-items: center; z-index: 1000;">
+                <div style="background: white; padding: 30px; border-radius: 10px;
+                            text-align: center; max-width: 400px; width: 90%;">
+                    <h3>Selecione o Nível do Ranking</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; 
+                                gap: 10px; margin: 20px 0;">
+                        <button onclick="openRanking(1)" 
+                                style="padding: 15px; background: #667eea; 
+                                    color: white; border: none; border-radius: 5px;
+                                    cursor: pointer;">
+                            Nível 1
+                        </button>
+                        <button onclick="openRanking(2)" 
+                                style="padding: 15px; background: #667eea; 
+                                    color: white; border: none; border-radius: 5px;
+                                    cursor: pointer;">
+                            Nível 2
+                        </button>
+                        <button onclick="openRanking(3)" 
+                                style="padding: 15px; background: #667eea; 
+                                    color: white; border: none; border-radius: 5px;
+                                    cursor: pointer;">
+                            Nível 3
+                        </button>
+                    </div>
+                    <button onclick="closeRankingModal()" 
+                            style="padding: 10px 20px; background: #dc3545; 
+                                color: white; border: none; border-radius: 5px;
+                                cursor: pointer; margin-top: 10px;">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        const modal = document.createElement('div');
+        modal.innerHTML = modalHTML;
+        document.body.appendChild(modal);
+        
+        window.closeRankingModal = function() {
+            document.body.removeChild(modal);
+        };
+        
+        window.openRanking = function(level) {
+            window.location.href = `/ranking/${level}`;
+        };
+    }
     </script>
 </body>
 </html>

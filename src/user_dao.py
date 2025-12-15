@@ -72,9 +72,21 @@ class UserDAO:
         """Obtém um usuário pelo nickname"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
+
+        print(f"UserDAO.get_user_by_nickname: Procurando usuário com nickname '{nickname}")
         
         cursor.execute('SELECT * FROM users WHERE nickname = ?', (nickname,))
         user_data = cursor.fetchone()
+
+        if user_data:
+            print(f"Usuario encontrado: {user_data}")
+        else:
+            print("Nenhum usuário encontrado para: {nickname}")
+
+            cursor.execute('SELECT nickname FROM users')
+            all_nicknames = cursor.fetchall()
+            print(f"Nicknames disponíveis no banco de dados: {[n[0] for n in all_nicknames]}")
+            
         conn.close()
         
         if user_data:

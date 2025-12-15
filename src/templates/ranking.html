@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ranking - Nível {{ level }}</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0; padding: 0; min-height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .ranking-container {
+            background: white; padding: 40px; border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center;
+            max-width: 800px; width: 90%;
+        }
+        h2 {
+            color: #333; margin-bottom: 30px;
+            display: flex; align-items: center; justify-content: center;
+            gap: 10px;
+        }
+        .back-button {
+            position: absolute; left: 20px; top: 20px;
+            padding: 10px 20px; background: #667eea;
+            color: white; border: none; border-radius: 5px;
+            cursor: pointer; text-decoration: none; display: inline-block;
+        }
+        .back-button:hover {
+            background: #5a6fd8;
+        }
+        .ranking-table {
+            width: 100%; border-collapse: collapse; margin: 20px 0;
+        }
+        .ranking-table th {
+            background: #667eea; color: white; padding: 15px;
+            text-align: center;
+        }
+        .ranking-table td {
+            padding: 12px; text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+        .ranking-table tr:hover {
+            background: #f5f5f5;
+        }
+        .rank-1 { background: #fff9e6; }
+        .rank-2 { background: #f0f0f0; }
+        .rank-3 { background: #fff0e6; }
+        .rank-badge {
+            display: inline-block; width: 30px; height: 30px;
+            border-radius: 50%; color: white; font-weight: bold;
+            line-height: 30px; text-align: center;
+        }
+        .rank-1 .rank-badge { background: #ffd700; }
+        .rank-2 .rank-badge { background: #c0c0c0; }
+        .rank-3 .rank-badge { background: #cd7f32; }
+        .other-ranks .rank-badge { background: #667eea; }
+        .loading {
+            padding: 20px; text-align: center; color: #666;
+        }
+        .empty-ranking {
+            padding: 40px; color: #666; font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <a href="/level-selection" class="back-button">← Voltar</a>
+    
+    <div class="ranking-container">
+        <h2>🏆 Ranking - Nível {{ level }}</h2>
+        
+        <div id="rankingContent">
+            <div class="loading">
+                <p>Carregando ranking...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadRankings() {
+            try {
+                console.log(`Carregando rankings para o nível {{ level }}`);
+                
+                const response = await fetch(`/api/get-rankings/{{ level }}`);
+                console.log(`Resposta recebida do servidor:`, response);
+
+                const data = await response.json();
+                console.log(`Dados recebidos:`, data);
+                
+                const rankingContent = document.getElementById('rankingContent');
+                
+                if (!data.success) {
+                    console.error(`❌ Erro do servidor: ${data.message}`);
+                    rankingContent.innerHTML = `
+                        <div class="empty-ranking">
+                            <p>❌ Erro ao carregar ranking: ${data.message || 'Erro desconhecido'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+
+                if (!data.success || data.rankings.length === 0) {
+                    console.error(`Erro no servidor: ${data.message}`);
+                    
+                    rankingContent.innerHTML = `
+                        <div class="empty-ranking">
+                            <p>Nenhum registro de ranking ainda para este nível.</p>
+                            <p>Seja o primeiro a completar!</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let tableHTML = `
+                    <table class="ranking-table">
+                        <thead>
+                            <tr>
+                                <th>Posição</th>
+                                <th>Jogador</th>
+                                <th>Tempo</th>
+                                <th>Pontuação</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.rankings.forEach((ranking, index) => {
+                    const rankClass = index === 0 ? 'rank-1' : 
+                                     index === 1 ? 'rank-2' : 
+                                     index === 2 ? 'rank-3' : 'other-ranks';
+                    
+                    const date = new Date(ranking.created_at);
+                    const formattedDate = date.toLocaleDateString('pt-BR');
+                    
+                    tableHTML += `
+                        <tr class="${rankClass}">
+                            <td>
+                                <div class="rank-badge">${index + 1}</div>
+                            </td>
+                            <td><strong>${ranking.nickname}</strong></td>
+                            <td><span style="font-family: monospace;">${ranking.time_formatted}</span></td>
+                            <td>${ranking.score}</td>
+                            <td>${formattedDate}</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+                
+                rankingContent.innerHTML = tableHTML;
+                
+            } catch (error) {
+                console.error('Erro ao carregar ranking:', error);
+                document.getElementById('rankingContent').innerHTML = `
+                    <div class="empty-ranking">
+                        <p>Erro ao carregar ranking. Tente novamente.</p>
+                    </div>
+                `;
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', loadRankings);
+    </script>
+</body>
+</html>

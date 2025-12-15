@@ -6,12 +6,13 @@ import subprocess
 import threading
 import sys
 import time
+from ranking_dao import RankingDAO
 
 app = Flask(__name__, template_folder='templates')
 app.secret_key = 'sua_chave_secreta_super_segura_aqui_12345'
 user_dao = UserDAO()
+ranking_dao = RankingDAO()
 
-# Dicionário para armazenar sessões ativas (em produção use Redis ou similar)
 active_sessions = {}
 
 @app.route('/')
@@ -37,23 +38,20 @@ def level_selection():
 def run_game_process(user_id, level):
     """Executa o jogo Pygame em um processo separado"""
     try:
-        # Obter dados do usuário diretamente do banco (sem usar session)
         user = user_dao.get_user_by_id(user_id)
         if not user:
-            print("❌ ERRO: Usuário não encontrado")
+            print("ERRO: Usuário não encontrado")
             return False
         
         print(f"🎮 Iniciando jogo para: {user.nickname}")
         print(f"🎯 Nível: {level}")
         print(f"🎨 Skin: {user.skin_selected}")
-        
-        # Caminho absoluto para o game_launcher.py
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         game_script = os.path.join(current_dir, 'game_launcher.py')
         
         print(f"📁 Executando: {game_script}")
         
-        # Executar o jogo como subprocesso
         process = subprocess.Popen([
             sys.executable, game_script,
             '--nickname', user.nickname,
@@ -61,7 +59,6 @@ def run_game_process(user_id, level):
             '--level', str(level)
         ])
         
-        # Armazenar processo na sessão ativa
         active_sessions[user_id] = {
             'process': process,
             'running': True,
@@ -70,14 +67,33 @@ def run_game_process(user_id, level):
         
         print("✅ Jogo iniciado com sucesso!")
         
-        # Monitorar o processo em uma thread separada
         def monitor_process():
-            process.wait()  # Espera o processo terminar
+            process.wait()
             
-            # Atualizar status
             active_sessions[user_id]['running'] = False
+
+            try:
+                import json
+                if os.path.exists('game_result.json'):
+                    with open('game_result.json', 'r') as f:
+                        result_data = json.load(f)
+
+                    print(f"📊 Resultado do jogo para {user.nickname}: {result_data}")
+                    
+                    if result_data.get('success'):
+                        try:
+                            import requests
+                            response = requests.post('http://localhost:5000/api/save-ranking',
+                                          json=result_data,
+                                          timeout=5)
+                            print(f" Resposta do servidor: {response.json()}")
+                        except Exception as e:
+                            print(f"Erro ao enviar resultado para o servidor: {e}")                 
+                    
+                    os.remove('game_result.json')
+            except Exception as e:
+                print(f"Erro ao processar resultado: {e}")
             
-            # Atualizar progresso se o jogo foi bem-sucedido
             if process.returncode == 0 and level < 3:
                 new_level = level + 1
                 user.level_unlocked = new_level
@@ -93,7 +109,7 @@ def run_game_process(user_id, level):
         return True
         
     except Exception as e:
-        print(f"❌ ERRO ao iniciar jogo: {e}")
+        print(f"ERRO ao iniciar jogo: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -105,26 +121,22 @@ def api_start_game():
     
     user_id = session['user_id']
     
-    # Verificar se já tem jogo rodando para este usuário
     if user_id in active_sessions and active_sessions[user_id]['running']:
         return jsonify({'success': False, 'message': 'Jogo já está em execução'})
     
     data = request.json
     level = data.get('level', 1)
     
-    # Verificar se o usuário tem acesso ao nível
     user = user_dao.get_user_by_id(user_id)
     if not user or level > user.level_unlocked:
         return jsonify({'success': False, 'message': 'Nível não desbloqueado'})
     
     print(f"🚀 Solicitado início do jogo - Usuário: {user.nickname}, Nível: {level}")
     
-    # Iniciar o jogo em uma thread separada
     thread = threading.Thread(target=run_game_process, args=(user_id, level))
     thread.daemon = True
     thread.start()
     
-    # Dar tempo para o processo iniciar
     time.sleep(1)
     
     if user_id in active_sessions and active_sessions[user_id]['running']:
@@ -146,7 +158,6 @@ def api_game_status():
     user_id = session['user_id']
     
     if user_id in active_sessions:
-        # Verificar se o processo ainda está rodando
         process_info = active_sessions[user_id]
         if process_info['process'].poll() is not None:
             process_info['running'] = False
@@ -170,7 +181,6 @@ def api_stop_game():
     
     return jsonify({'success': False})
 
-# API endpoints
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.json
@@ -246,7 +256,6 @@ def api_update_level_progress():
 def api_logout():
     user_id = session.get('user_id')
     
-    # Parar jogo se estiver rodando
     if user_id in active_sessions:
         active_sessions[user_id]['process'].terminate()
         del active_sessions[user_id]
@@ -260,13 +269,104 @@ def api_check_auth():
         return jsonify({'authenticated': True})
     return jsonify({'authenticated': False})
 
+@app.route('/ranking/<int:level>')
+def ranking_page(level):
+    if 'user_id' not in session:
+        return render_template('login.html')
+    
+    if level < 1 or level > 3:
+        return "Nível inválido", 404
+    
+    return render_template('ranking.html', level=level)
+
+@app.route('/api/get-rankings/<int:level>', methods=['GET'])
+def api_get_rankings(level):
+    if level < 1 or level > 3:
+        return jsonify({'success': False, 'message': 'Nível inválido'})
+    
+    rankings = ranking_dao.get_rankings_by_level(level)
+    return jsonify({'success': True, 'rankings': rankings})
+
+@app.route('/api/save-ranking', methods=['POST'])
+def api_save_ranking():
+    try:
+        data = request.json
+        print(f"Recebido dados para salvar ranking: {data}")
+
+        if not data:
+            print("Dados vazios")
+            return jsonify({'success': False, 'message': 'Dados vazios'})
+        
+        if 'nickname' not in data:
+            print("Nickname não encontrado nos dados")
+            return jsonify({'success': False, 'message': 'Nickname não fornecido'})
+        
+        nickname = data['nickname']
+        print(f"🔍 Buscando usuário: {nickname}")
+        
+        user = user_dao.get_user_by_nickname(nickname)
+
+        if not user:
+            print(f"Usuário '{nickname}' não encontrado no banco de dados")
+            
+            conn = user_dao.db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nickname FROM users")
+            all_users = cursor.fetchall()
+            conn.close()
+            
+            print(f"Usuários no banco: {all_users}")
+            
+            return jsonify({'success': False, 'message': f'Usuário "{nickname}" não encontrado'})
+        
+        print(f"Usuário encontrado: ID={user.id}, Nickname={user.nickname}")
+        
+        level = data.get('level', 1)
+        completion_time = data.get('completion_time', 0)
+        score = data.get('score', 0)
+
+        if completion_time < 0:
+            print(f"⚠️ Tempo negativo detectado: {completion_time}. Corrigindo para 0.")
+            completion_time = 0
+        
+        print(f"Salvando ranking para:")
+        print(f"Usuário: {nickname}")
+        print(f"Nível: {level}")
+        print(f"Tempo: {completion_time}ms ({completion_time/1000:.2f}s)")
+        print(f"Pontuação: {score}")
+
+        success = ranking_dao.save_ranking(
+            user_id=user.id,
+            nickname=nickname,
+            level=level,
+            completion_time=completion_time,
+            score=score
+        )
+
+        if data.get('success') and level < 3:
+            new_level = max(user.level_unlocked, level + 1)
+            user.level_unlocked = new_level
+            user.score = max(user.score, score)
+            user_dao.update_user(user)
+            print(f"🎉 Progresso atualizado para {nickname}: nível {new_level}")
+        
+        print(f"Ranking salvo com sucesso: {success}")
+        
+        return jsonify({'success': success})
+        
+    except Exception as e:
+        print(f"ERRO CRÍTICO ao salvar ranking: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro interno: {str(e)}'})
+
 if __name__ == '__main__':
     if not os.path.exists('templates'):
         os.makedirs('templates')
-        print("⚠️  Pasta 'templates' criada. Certifique-se de adicionar os arquivos HTML.")
+        print("Pasta 'templates' criada. Certifique-se de adicionar os arquivos HTML.")
     
     print("=" * 50)
-    print("🎮 SERVIDOR DO JOGO 2D - VERSÃO CORRIGIDA")
+    print("🎮 SERVIDOR DO JOGO 2D - ECOVALLEY")
     print("=" * 50)
     print("📋 Instruções:")
     print("1. Acesse: http://localhost:5000")

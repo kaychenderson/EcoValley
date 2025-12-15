@@ -20,6 +20,24 @@ class Database:
                 score INTEGER DEFAULT 0
             )
         ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS rankings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                nickname TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                completion_time INTEGER NOT NULL,  -- tempo em milissegundos
+                score INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_rankings_level 
+            ON rankings(level, completion_time)
+        ''')
         
         conn.commit()
         conn.close()
